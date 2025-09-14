@@ -24,28 +24,39 @@ interface DashboardLayoutProps {
 
 const DashboardLayout = ({ children, userRole, activeTab, onTabChange, onLogout }: DashboardLayoutProps) => {
   const getNavItems = () => {
-    const commonItems = [
+    const studentItems = [
       { id: "dashboard", label: "Dashboard", icon: Home },
-      { id: "attendance", label: "Attendance", icon: CameraIcon },
-      { id: "qr-attendance", label: "QR Attendance", icon: QrCode },
-      { id: "statistics", label: "Statistics", icon: BarChart3 },
+      { id: "statistics", label: "My Attendance", icon: BarChart3 },
       { id: "tutorials", label: "Video Tutorials", icon: PlayCircle },
     ];
 
-    const roleSpecificItems = {
-      student: [],
-      teacher: [
-        { id: "students", label: "Students", icon: Users },
-      ],
-      admin: [
-        { id: "users", label: "Manage Users", icon: Users },
-        { id: "schedule", label: "Schedule", icon: Calendar },
-        { id: "hostel", label: "Hostel", icon: Building },
-        { id: "settings", label: "Settings", icon: Settings },
-      ],
+    const teacherItems = [
+      { id: "dashboard", label: "Dashboard", icon: Home },
+      { id: "mark-attendance", label: "Mark Attendance", icon: CameraIcon },
+      { id: "qr-attendance", label: "QR Attendance", icon: QrCode },
+      { id: "statistics", label: "Statistics", icon: BarChart3 },
+      { id: "students", label: "Students", icon: Users },
+      { id: "tutorials", label: "Video Tutorials", icon: PlayCircle },
+    ];
+
+    const adminItems = [
+      { id: "dashboard", label: "Dashboard", icon: Home },
+      { id: "face-registration", label: "Face Registration", icon: CameraIcon },
+      { id: "users", label: "Manage Users", icon: Users },
+      { id: "schedule", label: "Schedule", icon: Calendar },
+      { id: "hostel", label: "Hostel", icon: Building },
+      { id: "statistics", label: "Statistics", icon: BarChart3 },
+      { id: "tutorials", label: "Video Tutorials", icon: PlayCircle },
+      { id: "settings", label: "Settings", icon: Settings },
+    ];
+
+    const roleBasedItems = {
+      student: studentItems,
+      teacher: teacherItems,
+      admin: adminItems,
     };
 
-    return [...commonItems, ...roleSpecificItems[userRole]];
+    return roleBasedItems[userRole];
   };
 
   const navItems = getNavItems();

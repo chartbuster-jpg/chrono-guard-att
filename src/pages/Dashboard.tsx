@@ -4,6 +4,8 @@ import StatsCard from "@/components/StatsCard";
 import AttendanceChart from "@/components/AttendanceChart";
 import FaceRecognition from "@/components/FaceRecognition";
 import QRScanner from "@/components/QRScanner";
+import TeacherAttendance from "@/components/TeacherAttendance";
+import AdminFaceRegistration from "@/components/AdminFaceRegistration";
 import { 
   Users, 
   Calendar, 
@@ -119,56 +121,36 @@ const Dashboard = ({ userRole, onLogout }: DashboardProps) => {
     </div>
   );
 
-  const renderAttendance = () => (
+  const renderMarkAttendance = () => (
     <div className="space-y-8">
       <div>
-        <h1 className="text-3xl font-bold text-foreground mb-2">Mark Attendance</h1>
-        <p className="text-muted-foreground">Use face recognition or QR code to mark your attendance.</p>
+        <h1 className="text-3xl font-bold text-foreground mb-2">Mark Student Attendance</h1>
+        <p className="text-muted-foreground">Use face recognition to identify and mark student attendance.</p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <FaceRecognition 
-          onSuccess={handleAttendanceSuccess}
-          onError={handleAttendanceError}
-        />
-        <div className="bg-gradient-card rounded-xl border border-border p-6 shadow-custom-md">
-          <h3 className="text-lg font-semibold text-foreground mb-4">Schedule</h3>
-          <div className="space-y-4">
-            <div className="flex items-center justify-between p-4 rounded-lg bg-primary-light border border-primary/20">
-              <div className="flex items-center space-x-3">
-                <Clock className="w-5 h-5 text-primary" />
-                <div>
-                  <p className="font-medium text-primary">Mathematics</p>
-                  <p className="text-sm text-primary/70">Room 101</p>
-                </div>
-              </div>
-              <span className="text-sm font-medium text-primary">9:00 - 10:00 AM</span>
-            </div>
-            
-            <div className="flex items-center justify-between p-4 rounded-lg bg-background border border-border">
-              <div className="flex items-center space-x-3">
-                <Clock className="w-5 h-5 text-muted-foreground" />
-                <div>
-                  <p className="font-medium text-foreground">Physics</p>
-                  <p className="text-sm text-muted-foreground">Room 205</p>
-                </div>
-              </div>
-              <span className="text-sm font-medium text-muted-foreground">10:15 - 11:15 AM</span>
-            </div>
-            
-            <div className="flex items-center justify-between p-4 rounded-lg bg-background border border-border">
-              <div className="flex items-center space-x-3">
-                <Clock className="w-5 h-5 text-muted-foreground" />
-                <div>
-                  <p className="font-medium text-foreground">Chemistry</p>
-                  <p className="text-sm text-muted-foreground">Lab 3</p>
-                </div>
-              </div>
-              <span className="text-sm font-medium text-muted-foreground">11:30 - 12:30 PM</span>
-            </div>
-          </div>
-        </div>
+      <TeacherAttendance 
+        onSuccess={handleAttendanceSuccess}
+        onError={handleAttendanceError}
+      />
+    </div>
+  );
+
+  const renderFaceRegistration = () => (
+    <div className="space-y-8">
+      <div>
+        <h1 className="text-3xl font-bold text-foreground mb-2">Face ID Registration</h1>
+        <p className="text-muted-foreground">Register student faces for attendance recognition system.</p>
       </div>
+
+      <AdminFaceRegistration 
+        onSuccess={(studentId, studentName) => {
+          toast({
+            title: "Face Registered",
+            description: `Successfully registered face for ${studentName} (${studentId})`,
+          });
+        }}
+        onError={handleAttendanceError}
+      />
     </div>
   );
 
@@ -324,8 +306,10 @@ const Dashboard = ({ userRole, onLogout }: DashboardProps) => {
     switch (activeTab) {
       case "dashboard":
         return renderDashboard();
-      case "attendance":
-        return renderAttendance();
+      case "mark-attendance":
+        return renderMarkAttendance();
+      case "face-registration":
+        return renderFaceRegistration();
       case "qr-attendance":
         return renderQRAttendance();
       case "statistics":
