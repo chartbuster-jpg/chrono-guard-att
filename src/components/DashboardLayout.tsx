@@ -42,6 +42,7 @@ const DashboardLayout = ({ children, userRole, activeTab, onTabChange, onLogout 
     const adminItems = [
       { id: "dashboard", label: "Dashboard", icon: Home },
       { id: "face-registration", label: "Face Registration", icon: CameraIcon },
+      { id: "parents", label: "Parent Management", icon: Users },
       { id: "users", label: "Manage Users", icon: Users },
       { id: "schedule", label: "Schedule", icon: Calendar },
       { id: "hostel", label: "Hostel", icon: Building },

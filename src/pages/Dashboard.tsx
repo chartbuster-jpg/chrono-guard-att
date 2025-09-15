@@ -6,6 +6,9 @@ import FaceRecognition from "@/components/FaceRecognition";
 import QRScanner from "@/components/QRScanner";
 import TeacherAttendance from "@/components/TeacherAttendance";
 import AdminFaceRegistration from "@/components/AdminFaceRegistration";
+import StudentList from "@/components/StudentList";
+import ParentManagement from "@/components/ParentManagement";
+import HostelManagement from "@/components/HostelManagement";
 import { 
   Users, 
   Calendar, 
@@ -230,6 +233,8 @@ const Dashboard = ({ userRole, onLogout }: DashboardProps) => {
     if (userRole !== "admin") return null;
 
     switch (activeTab) {
+      case "parents":
+        return <ParentManagement />;
       case "users":
         return (
           <div className="space-y-8">
@@ -249,39 +254,7 @@ const Dashboard = ({ userRole, onLogout }: DashboardProps) => {
           </div>
         );
       case "hostel":
-        return (
-          <div className="space-y-8">
-            <div>
-              <h1 className="text-3xl font-bold text-foreground mb-2">Hostel Management</h1>
-              <p className="text-muted-foreground">Monitor hostel check-in and check-out activities.</p>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-              <StatsCard
-                title="Total Rooms"
-                value="120"
-                icon={<Building className="w-6 h-6" />}
-              />
-              <StatsCard
-                title="Occupied"
-                value="95"
-                icon={<Users className="w-6 h-6" />}
-                variant="success"
-              />
-              <StatsCard
-                title="Check-ins Today"
-                value="87"
-                icon={<CheckCircle className="w-6 h-6" />}
-                variant="success"
-              />
-              <StatsCard
-                title="Late Check-ins"
-                value="8"
-                icon={<AlertTriangle className="w-6 h-6" />}
-                variant="warning"
-              />
-            </div>
-          </div>
-        );
+        return <HostelManagement />;
       case "settings":
         return (
           <div className="space-y-8">
@@ -308,6 +281,8 @@ const Dashboard = ({ userRole, onLogout }: DashboardProps) => {
         return renderDashboard();
       case "mark-attendance":
         return renderMarkAttendance();
+      case "students":
+        return <StudentList userRole={userRole as "teacher" | "admin"} />;
       case "face-registration":
         return renderFaceRegistration();
       case "qr-attendance":
