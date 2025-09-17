@@ -1,9 +1,22 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL!;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY!;
+// Debug environment variables
+console.log('Environment variables:', {
+  VITE_SUPABASE_URL: import.meta.env.VITE_SUPABASE_URL,
+  VITE_SUPABASE_ANON_KEY: import.meta.env.VITE_SUPABASE_ANON_KEY ? 'Present' : 'Missing'
+});
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+if (!supabaseUrl || !supabaseAnonKey) {
+  console.error('Supabase configuration missing. Please ensure your Supabase integration is properly connected.');
+}
+
+// Create client with fallback for development
+export const supabase = supabaseUrl && supabaseAnonKey 
+  ? createClient(supabaseUrl, supabaseAnonKey)
+  : null;
 
 // Database types
 export interface Profile {
@@ -87,25 +100,51 @@ export interface SMSNotification {
 }
 
 // Authentication functions
-export const signIn = async (email: string, password: string) => {
-  const { data, error } = await supabase.auth.signInWithPassword({
+export const signUp = async (email: string, password: string, userData: any) => {
+  if (!supabase) {
+    return { data: null, error: { message: 'Supabase not configured' } };
+  }
+  const { data, error } = await supabase.auth.signUp({
     email,
     password,
+    options: {
+      data: userData
+    }
+  });
+  return { data, error };
+};
+
+export const signIn = async (email: string, password: string) => {
+  if (!supabase) {
+    return { data: null, error: { message: 'Supabase not configured' } };
+  }
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email,
+    password
   });
   return { data, error };
 };
 
 export const signOut = async () => {
+  if (!supabase) {
+    return { error: { message: 'Supabase not configured' } };
+  }
   const { error } = await supabase.auth.signOut();
   return { error };
 };
 
 export const getCurrentUser = async () => {
+  if (!supabase) {
+    return null;
+  }
   const { data: { user } } = await supabase.auth.getUser();
   return user;
 };
 
 export const getUserProfile = async (userId: string): Promise<Profile | null> => {
+  if (!supabase) {
+    return null;
+  }
   const { data, error } = await supabase
     .from('profiles')
     .select('*')
@@ -122,6 +161,56 @@ export const getUserProfile = async (userId: string): Promise<Profile | null> =>
 
 // Student management functions
 export const getAllStudents = async (): Promise<Profile[]> => {
+  if (!supabase) {
+    // Return mock data for development
+    return [
+      {
+        id: '1',
+        role: 'student',
+        full_name: 'John Doe',
+        email: 'john.doe@school.edu',
+        phone: '+1234567890',
+        student_id: 'STU001',
+        class_section: '10A',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      },
+      {
+        id: '2',
+        role: 'student',
+        full_name: 'Jane Smith',
+        email: 'jane.smith@school.edu',
+        phone: '+1234567892',
+        student_id: 'STU002',
+        class_section: '10A',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      },
+      {
+        id: '3',
+        role: 'student',
+        full_name: 'Mike Johnson',
+        email: 'mike.johnson@school.edu',
+        phone: '+1234567894',
+        student_id: 'STU003',
+        class_section: '10B',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      },
+      {
+        id: '4',
+        role: 'student',
+        full_name: 'Sarah Wilson',
+        email: 'sarah.wilson@school.edu',
+        phone: '+1234567896',
+        student_id: 'STU004',
+        class_section: '10A',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }
+    ];
+  }
+  
   const { data, error } = await supabase
     .from('profiles')
     .select('*')
@@ -137,6 +226,10 @@ export const getAllStudents = async (): Promise<Profile[]> => {
 };
 
 export const getStudentsByStatus = async (date: string = new Date().toISOString().split('T')[0]) => {
+  if (!supabase) {
+    return { present: [], absent: [], risk: [] };
+  }
+  
   const { data: students, error: studentsError } = await supabase
     .from('profiles')
     .select('*')
@@ -177,6 +270,10 @@ export const getStudentsByStatus = async (date: string = new Date().toISOString(
 
 // Attendance functions
 export const markAttendance = async (studentId: string, status: 'present' | 'absent' | 'late', method: string, location?: any) => {
+  if (!supabase) {
+    return { data: null, error: { message: 'Supabase not configured' } };
+  }
+  
   const { data, error } = await supabase
     .from('attendance_records')
     .upsert({
@@ -193,6 +290,10 @@ export const markAttendance = async (studentId: string, status: 'present' | 'abs
 };
 
 export const getAttendanceRecords = async (studentId?: string, date?: string): Promise<AttendanceRecord[]> => {
+  if (!supabase) {
+    return [];
+  }
+  
   let query = supabase
     .from('attendance_records')
     .select(`
@@ -221,6 +322,10 @@ export const getAttendanceRecords = async (studentId?: string, date?: string): P
 
 // Face recognition functions
 export const registerFaceData = async (studentId: string, faceEncoding: string) => {
+  if (!supabase) {
+    return { data: null, error: { message: 'Supabase not configured' } };
+  }
+  
   const { data, error } = await supabase
     .from('face_data')
     .upsert({
@@ -233,6 +338,10 @@ export const registerFaceData = async (studentId: string, faceEncoding: string) 
 };
 
 export const getFaceData = async (studentId?: string): Promise<FaceData[]> => {
+  if (!supabase) {
+    return [];
+  }
+  
   let query = supabase.from('face_data').select('*');
   
   if (studentId) {
@@ -251,6 +360,10 @@ export const getFaceData = async (studentId?: string): Promise<FaceData[]> => {
 
 // Parent management functions
 export const addParent = async (parent: Omit<Parent, 'id' | 'created_at'>) => {
+  if (!supabase) {
+    return { data: null, error: { message: 'Supabase not configured' } };
+  }
+  
   const { data, error } = await supabase
     .from('parents')
     .insert(parent);
@@ -259,6 +372,31 @@ export const addParent = async (parent: Omit<Parent, 'id' | 'created_at'>) => {
 };
 
 export const getParentsByStudent = async (studentId: string): Promise<Parent[]> => {
+  if (!supabase) {
+    // Return mock parent data for development
+    const mockParents: { [key: string]: Parent[] } = {
+      '1': [{
+        id: 'p1',
+        student_id: '1',
+        parent_name: 'Robert Doe',
+        parent_phone: '+1234567891',
+        parent_email: 'robert.doe@email.com',
+        relationship: 'father',
+        created_at: new Date().toISOString(),
+      }],
+      '2': [{
+        id: 'p2',
+        student_id: '2',
+        parent_name: 'Mary Smith',
+        parent_phone: '+1234567893',
+        parent_email: 'mary.smith@email.com',
+        relationship: 'mother',
+        created_at: new Date().toISOString(),
+      }],
+    };
+    return mockParents[studentId] || [];
+  }
+  
   const { data, error } = await supabase
     .from('parents')
     .select('*')
@@ -274,6 +412,10 @@ export const getParentsByStudent = async (studentId: string): Promise<Parent[]> 
 
 // Hostel management functions
 export const getHostelRecords = async (): Promise<HostelRecord[]> => {
+  if (!supabase) {
+    return [];
+  }
+  
   const { data, error } = await supabase
     .from('hostel_records')
     .select('*')
@@ -288,6 +430,10 @@ export const getHostelRecords = async (): Promise<HostelRecord[]> => {
 };
 
 export const updateHostelStatus = async (studentId: string, status: string, roomNumber?: string) => {
+  if (!supabase) {
+    return { data: null, error: { message: 'Supabase not configured' } };
+  }
+  
   const updateData: any = {
     student_id: studentId,
     status,
