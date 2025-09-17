@@ -1,11 +1,11 @@
 import { useState, useEffect } from "react";
-import { Card } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Search, Users, UserCheck, UserX, AlertTriangle, Calendar, Phone } from "lucide-react";
-import { getStudentsByStatus, markAttendance, Profile } from "@/lib/supabase";
+import { Search, Users, UserCheck, UserX, AlertTriangle, Calendar, Phone, Mail, MapPin, MessageSquare, User } from "lucide-react";
+import { getAllStudents, markAttendance, Profile, getParentsByStudent, Parent } from "@/lib/supabase";
 import { useToast } from "@/hooks/use-toast";
 
 interface StudentListProps {
@@ -13,14 +13,19 @@ interface StudentListProps {
 }
 
 const StudentList = ({ userRole }: StudentListProps) => {
-  const [students, setStudents] = useState<{
-    present: Profile[];
-    absent: Profile[];
-    risk: Profile[];
-  }>({ present: [], absent: [], risk: [] });
+  const [students, setStudents] = useState<Profile[]>([]);
+  const [parents, setParents] = useState<{[key: string]: Parent[]}>({});
   const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
+
+  // Mock attendance data for demo
+  const mockAttendanceData = {
+    "STU001": { status: "present", attendanceRate: 92, riskLevel: "low", lastAttendance: "2024-01-15 09:30 AM" },
+    "STU002": { status: "absent", attendanceRate: 78, riskLevel: "medium", lastAttendance: "2024-01-14 09:15 AM" },
+    "STU003": { status: "absent", attendanceRate: 65, riskLevel: "high", lastAttendance: "2024-01-10 09:45 AM" },
+    "STU004": { status: "present", attendanceRate: 95, riskLevel: "low", lastAttendance: "2024-01-15 09:20 AM" },
+  };
 
   useEffect(() => {
     loadStudentsData();
@@ -28,8 +33,16 @@ const StudentList = ({ userRole }: StudentListProps) => {
 
   const loadStudentsData = async () => {
     setLoading(true);
-    const data = await getStudentsByStatus();
-    setStudents(data);
+    const studentsData = await getAllStudents();
+    setStudents(studentsData);
+    
+    // Load parent data for each student
+    const parentData: {[key: string]: Parent[]} = {};
+    await Promise.all(studentsData.map(async (student) => {
+      const studentParents = await getParentsByStudent(student.id);
+      parentData[student.id] = studentParents;
+    }));
+    setParents(parentData);
     setLoading(false);
   };
 
@@ -51,84 +64,152 @@ const StudentList = ({ userRole }: StudentListProps) => {
     }
   };
 
-  const filteredStudents = {
-    present: students.present.filter(s => 
-      s.full_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      s.student_id?.toLowerCase().includes(searchQuery.toLowerCase())
-    ),
-    absent: students.absent.filter(s => 
-      s.full_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      s.student_id?.toLowerCase().includes(searchQuery.toLowerCase())
-    ),
-    risk: students.risk.filter((s: any) => 
-      s.full_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      s.student_id?.toLowerCase().includes(searchQuery.toLowerCase())
-    )
+  const handleSendSMS = async (student: Profile) => {
+    const studentParents = parents[student.id] || [];
+    if (studentParents.length === 0) {
+      toast({
+        title: "No Parent Contact",
+        description: "No parent contact information found for this student.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    // In real app, this would call SMS API
+    toast({
+      title: "SMS Sent",
+      description: `Absence notification sent to ${studentParents[0].parent_name} (${studentParents[0].parent_phone})`,
+    });
   };
 
-  const StudentCard = ({ student, status, showActions = false }: { 
-    student: Profile | any; 
-    status: 'present' | 'absent' | 'risk';
-    showActions?: boolean;
-  }) => (
-    <Card className="p-4">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center space-x-3">
-          <div className={`w-3 h-3 rounded-full ${
-            status === 'present' ? 'bg-success' : 
-            status === 'absent' ? 'bg-destructive' : 'bg-warning'
-          }`} />
-          <div>
-            <h4 className="font-medium text-foreground">{student.full_name}</h4>
-            <div className="flex items-center space-x-2 text-sm text-muted-foreground">
-              <span>ID: {student.student_id}</span>
-              <span>•</span>
-              <span>Class: {student.class_section}</span>
-              {status === 'risk' && student.attendance_percentage !== undefined && (
-                <>
-                  <span>•</span>
-                  <span>Attendance: {student.attendance_percentage.toFixed(1)}%</span>
-                </>
-              )}
+  const getStudentData = (student: Profile) => {
+    return mockAttendanceData[student.student_id as keyof typeof mockAttendanceData] || {
+      status: "present",
+      attendanceRate: 85,
+      riskLevel: "low",
+      lastAttendance: "N/A"
+    };
+  };
+
+  const filteredStudents = students.filter(student => 
+    student.full_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    student.student_id?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    student.class_section?.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const presentStudents = filteredStudents.filter(s => getStudentData(s).status === "present");
+  const absentStudents = filteredStudents.filter(s => getStudentData(s).status === "absent");
+  const riskStudents = filteredStudents.filter(s => getStudentData(s).riskLevel === "high");
+
+  const StudentCard = ({ student }: { student: Profile }) => {
+    const studentData = getStudentData(student);
+    const studentParents = parents[student.id] || [];
+    
+    return (
+      <Card className="hover:shadow-custom-md transition-shadow">
+        <CardHeader className="pb-3">
+          <div className="flex items-start justify-between">
+            <div className="flex items-center space-x-3">
+              <div className="w-12 h-12 bg-gradient-primary rounded-full flex items-center justify-center">
+                <User className="w-6 h-6 text-primary-foreground" />
+              </div>
+              <div>
+                <CardTitle className="text-lg">{student.full_name}</CardTitle>
+                <p className="text-sm text-muted-foreground">ID: {student.student_id}</p>
+              </div>
+            </div>
+            <div className="flex flex-col space-y-1">
+              <Badge variant={studentData.status === "present" ? "default" : "destructive"}>
+                {studentData.status}
+              </Badge>
+              <Badge variant={
+                studentData.riskLevel === "low" ? "default" : 
+                studentData.riskLevel === "medium" ? "secondary" : "destructive"
+              } className="text-xs">
+                {studentData.riskLevel} risk
+              </Badge>
             </div>
           </div>
-        </div>
+        </CardHeader>
         
-        <div className="flex items-center space-x-2">
-          <Badge variant={
-            status === 'present' ? 'default' : 
-            status === 'absent' ? 'destructive' : 'secondary'
-          }>
-            {status === 'present' ? 'Present' : 
-             status === 'absent' ? 'Absent' : 'Risk Student'}
-          </Badge>
-          
-          {showActions && userRole === 'teacher' && (
-            <div className="flex space-x-1">
-              {status === 'absent' && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => handleManualAttendance(student.id, 'present')}
-                >
-                  Mark Present
-                </Button>
-              )}
-              {status === 'present' && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => handleManualAttendance(student.id, 'absent')}
-                >
-                  Mark Absent
-                </Button>
-              )}
+        <CardContent className="space-y-3">
+          <div className="grid grid-cols-2 gap-2 text-sm">
+            <div>
+              <p className="text-muted-foreground">Class</p>
+              <p className="font-medium">{student.class_section}</p>
+            </div>
+            <div>
+              <p className="text-muted-foreground">Attendance</p>
+              <p className="font-medium">{studentData.attendanceRate}%</p>
+            </div>
+          </div>
+
+          <div className="space-y-2 text-sm">
+            <div className="flex items-center space-x-2">
+              <Mail className="w-4 h-4 text-muted-foreground" />
+              <span className="text-muted-foreground truncate">{student.email || "No email"}</span>
+            </div>
+            <div className="flex items-center space-x-2">
+              <Phone className="w-4 h-4 text-muted-foreground" />
+              <span className="text-muted-foreground">{student.phone || "No phone"}</span>
+            </div>
+            <div className="flex items-center space-x-2">
+              <MapPin className="w-4 h-4 text-muted-foreground" />
+              <span className="text-muted-foreground truncate">{student.class_section || "No class"}</span>
+            </div>
+          </div>
+
+          {studentParents.length > 0 && (
+            <div className="border-t pt-3">
+              <p className="text-sm text-muted-foreground mb-1">Parent Contact</p>
+              <div className="flex items-center justify-between">
+                <div className="flex-1 min-w-0">
+                  <p className="font-medium text-sm truncate">{studentParents[0].parent_name}</p>
+                  <p className="text-xs text-muted-foreground">{studentParents[0].parent_phone}</p>
+                </div>
+                {studentData.status === "absent" && (
+                  <Button 
+                    size="sm" 
+                    variant="outline"
+                    onClick={() => handleSendSMS(student)}
+                    className="ml-2 flex-shrink-0"
+                  >
+                    <MessageSquare className="w-4 h-4 mr-1" />
+                    SMS
+                  </Button>
+                )}
+              </div>
             </div>
           )}
-        </div>
-      </div>
-    </Card>
-  );
+
+          {userRole === 'teacher' && (
+            <div className="border-t pt-3 flex space-x-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => handleManualAttendance(student.id, 'present')}
+                className="flex-1"
+              >
+                Mark Present
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => handleManualAttendance(student.id, 'absent')}
+                className="flex-1"
+              >
+                Mark Absent
+              </Button>
+            </div>
+          )}
+
+          <div className="text-xs text-muted-foreground">
+            Last seen: {studentData.lastAttendance}
+          </div>
+        </CardContent>
+      </Card>
+    );
+  };
 
   if (loading) {
     return (
@@ -143,10 +224,10 @@ const StudentList = ({ userRole }: StudentListProps) => {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-bold text-foreground mb-2">Student Attendance Status</h1>
-          <p className="text-muted-foreground">View and manage student attendance for today.</p>
+          <h1 className="text-3xl font-bold text-foreground mb-2">Student Management</h1>
+          <p className="text-muted-foreground">Monitor attendance and manage student information</p>
         </div>
         <Button onClick={loadStudentsData} variant="outline">
           <Calendar className="w-4 h-4 mr-2" />
@@ -154,11 +235,62 @@ const StudentList = ({ userRole }: StudentListProps) => {
         </Button>
       </div>
 
+      {/* Quick Stats */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center space-x-2">
+              <Users className="w-5 h-5 text-primary" />
+              <div>
+                <p className="text-sm text-muted-foreground">Total Students</p>
+                <p className="text-2xl font-bold text-foreground">{students.length}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center space-x-2">
+              <div className="w-5 h-5 bg-success rounded-full" />
+              <div>
+                <p className="text-sm text-muted-foreground">Present Today</p>
+                <p className="text-2xl font-bold text-success">{presentStudents.length}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center space-x-2">
+              <div className="w-5 h-5 bg-destructive rounded-full" />
+              <div>
+                <p className="text-sm text-muted-foreground">Absent Today</p>
+                <p className="text-2xl font-bold text-destructive">{absentStudents.length}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center space-x-2">
+              <AlertTriangle className="w-5 h-5 text-warning" />
+              <div>
+                <p className="text-sm text-muted-foreground">Risk Students</p>
+                <p className="text-2xl font-bold text-warning">{riskStudents.length}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
       {/* Search */}
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+      <div className="relative max-w-md">
+        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
         <Input
-          placeholder="Search students by name or ID..."
+          placeholder="Search students..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           className="pl-10"
@@ -166,81 +298,63 @@ const StudentList = ({ userRole }: StudentListProps) => {
       </div>
 
       {/* Tabs for different student categories */}
-      <Tabs defaultValue="present" className="w-full">
-        <TabsList className="grid w-full grid-cols-3">
+      <Tabs defaultValue="all" className="w-full">
+        <TabsList className="grid w-full grid-cols-4">
+          <TabsTrigger value="all">All Students ({filteredStudents.length})</TabsTrigger>
           <TabsTrigger value="present" className="flex items-center space-x-2">
             <UserCheck className="w-4 h-4" />
-            <span>Present ({filteredStudents.present.length})</span>
+            <span>Present ({presentStudents.length})</span>
           </TabsTrigger>
           <TabsTrigger value="absent" className="flex items-center space-x-2">
             <UserX className="w-4 h-4" />
-            <span>Absent ({filteredStudents.absent.length})</span>
+            <span>Absent ({absentStudents.length})</span>
           </TabsTrigger>
           <TabsTrigger value="risk" className="flex items-center space-x-2">
             <AlertTriangle className="w-4 h-4" />
-            <span>Risk Students ({filteredStudents.risk.length})</span>
+            <span>Risk ({riskStudents.length})</span>
           </TabsTrigger>
         </TabsList>
 
+        <TabsContent value="all" className="space-y-4">
+          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+            {filteredStudents.map((student) => (
+              <StudentCard key={student.id} student={student} />
+            ))}
+          </div>
+        </TabsContent>
+
         <TabsContent value="present" className="space-y-4">
-          {filteredStudents.present.length === 0 ? (
-            <Card className="p-8 text-center">
-              <UserCheck className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-              <p className="text-muted-foreground">No present students found.</p>
-            </Card>
-          ) : (
-            <div className="space-y-3">
-              {filteredStudents.present.map((student) => (
-                <StudentCard 
-                  key={student.id} 
-                  student={student} 
-                  status="present" 
-                  showActions={userRole === 'teacher'}
-                />
-              ))}
-            </div>
-          )}
+          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+            {presentStudents.map((student) => (
+              <StudentCard key={student.id} student={student} />
+            ))}
+          </div>
         </TabsContent>
 
         <TabsContent value="absent" className="space-y-4">
-          {filteredStudents.absent.length === 0 ? (
-            <Card className="p-8 text-center">
-              <UserX className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-              <p className="text-muted-foreground">No absent students found.</p>
-            </Card>
-          ) : (
-            <div className="space-y-3">
-              {filteredStudents.absent.map((student) => (
-                <StudentCard 
-                  key={student.id} 
-                  student={student} 
-                  status="absent" 
-                  showActions={userRole === 'teacher'}
-                />
-              ))}
-            </div>
-          )}
+          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+            {absentStudents.map((student) => (
+              <StudentCard key={student.id} student={student} />
+            ))}
+          </div>
         </TabsContent>
 
         <TabsContent value="risk" className="space-y-4">
-          {filteredStudents.risk.length === 0 ? (
-            <Card className="p-8 text-center">
-              <AlertTriangle className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-              <p className="text-muted-foreground">No risk students found.</p>
-            </Card>
-          ) : (
-            <div className="space-y-3">
-              {filteredStudents.risk.map((student) => (
-                <StudentCard 
-                  key={student.id} 
-                  student={student} 
-                  status="risk"
-                />
-              ))}
-            </div>
-          )}
+          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+            {riskStudents.map((student) => (
+              <StudentCard key={student.id} student={student} />
+            ))}
+          </div>
         </TabsContent>
       </Tabs>
+
+      {filteredStudents.length === 0 && (
+        <div className="text-center py-12">
+          <Users className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
+          <p className="text-lg text-muted-foreground">No students found</p>
+          <p className="text-sm text-muted-foreground">Try adjusting your search terms</p>
+        </div>
+      )}
     </div>
   );
 };
