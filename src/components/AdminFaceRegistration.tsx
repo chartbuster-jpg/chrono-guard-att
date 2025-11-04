@@ -43,17 +43,38 @@ const AdminFaceRegistration = ({ onSuccess, onError }: AdminFaceRegistrationProp
 
   const startCamera = async () => {
     try {
+      console.log("Requesting camera access...");
       const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { facingMode: "user" } 
+        video: { 
+          facingMode: "user",
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
+        } 
       });
+      console.log("Camera access granted, stream:", stream);
+      
       streamRef.current = stream;
+      
+      // Wait a tick to ensure video element is mounted
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
+        console.log("Stream assigned to video element");
+        
+        // Ensure video plays
+        try {
+          await videoRef.current.play();
+          console.log("Video playback started");
+        } catch (playErr) {
+          console.error("Video play error:", playErr);
+        }
       }
       setIsCameraActive(true);
     } catch (err) {
-      onError("Unable to access camera. Please check permissions.");
-      console.error("Camera error:", err);
+      const errorMessage = err instanceof Error ? err.message : "Unknown error";
+      console.error("Camera error:", errorMessage, err);
+      onError(`Unable to access camera: ${errorMessage}. Please check permissions.`);
     }
   };
 
@@ -191,7 +212,8 @@ const AdminFaceRegistration = ({ onSuccess, onError }: AdminFaceRegistrationProp
                 autoPlay
                 playsInline
                 muted
-                className="w-full h-full object-cover"
+                className="w-full h-full object-cover bg-black"
+                style={{ transform: 'scaleX(-1)' }}
               />
             ) : (
               <div className="w-full h-full flex items-center justify-center bg-muted">
