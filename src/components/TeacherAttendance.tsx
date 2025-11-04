@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Camera, Check, X, Search } from "lucide-react";
@@ -14,6 +14,9 @@ const TeacherAttendance = ({ onSuccess, onError }: TeacherAttendanceProps) => {
   const [scanResult, setScanResult] = useState<"success" | "failed" | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [scannedStudent, setScannedStudent] = useState<{id: string, name: string} | null>(null);
+  const [isCameraActive, setIsCameraActive] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
 
   // Mock student database - in real app this would come from backend
   const students = [
@@ -28,20 +31,65 @@ const TeacherAttendance = ({ onSuccess, onError }: TeacherAttendanceProps) => {
     student.id.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const handleStartScan = () => {
+  useEffect(() => {
+    return () => {
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop());
+      }
+    };
+  }, []);
+
+  const startCamera = async () => {
+    try {
+      console.log("[TeacherAttendance] Requesting camera access...");
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: "user",
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
+        }
+      });
+      streamRef.current = stream;
+      await new Promise(r => setTimeout(r, 100));
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        try { await videoRef.current.play(); } catch (e) { console.error("[TeacherAttendance] play error", e); }
+      }
+      setIsCameraActive(true);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Unknown error";
+      console.error("[TeacherAttendance] Camera error:", msg, err);
+      onError(`Unable to access camera: ${msg}`);
+    }
+  };
+
+  const stopCamera = () => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(t => t.stop());
+      streamRef.current = null;
+    }
+    setIsCameraActive(false);
+  };
+
+  const handleStartScan = async () => {
+    if (!isCameraActive) {
+      await startCamera();
+    }
+
     setIsScanning(true);
     setScanResult(null);
     setScannedStudent(null);
     
     // Simulate face recognition process
     setTimeout(() => {
-      const isSuccessful = Math.random() > 0.2; // 80% success rate for demo
+      const isSuccessful = Math.random() > 0.2;
       
       if (isSuccessful) {
         const randomStudent = students[Math.floor(Math.random() * students.length)];
         setScanResult("success");
         setScannedStudent(randomStudent);
         onSuccess(randomStudent.id, randomStudent.name);
+        stopCamera();
       } else {
         setScanResult("failed");
         onError("Face not recognized. Please try again or use manual search.");
@@ -49,14 +97,12 @@ const TeacherAttendance = ({ onSuccess, onError }: TeacherAttendanceProps) => {
       
       setIsScanning(false);
       
-      // Reset after 3 seconds
       setTimeout(() => {
         setScanResult(null);
         setScannedStudent(null);
       }, 3000);
     }, 3000);
   };
-
   const handleManualAttendance = (student: {id: string, name: string}) => {
     onSuccess(student.id, student.name);
   };
@@ -69,34 +115,52 @@ const TeacherAttendance = ({ onSuccess, onError }: TeacherAttendanceProps) => {
         
         <div className="space-y-4">
           <div className={cn(
-            "w-full h-64 rounded-lg border-2 border-dashed flex items-center justify-center transition-all duration-300",
-            isScanning ? "border-primary bg-primary-light animate-pulse" : "border-border bg-muted",
-            scanResult === "success" ? "border-success bg-success-light" : "",
-            scanResult === "failed" ? "border-destructive bg-destructive-light" : ""
+            "w-full h-64 rounded-lg border-2 overflow-hidden relative transition-all duration-300",
+            isScanning ? "border-primary" : "border-border",
+            scanResult === "success" ? "border-success" : "",
+            scanResult === "failed" ? "border-destructive" : ""
           )}>
             {scanResult === "success" && scannedStudent ? (
-              <div className="text-center">
-                <Check className="w-16 h-16 text-success mx-auto mb-2" />
-                <p className="text-success font-medium">Student Recognized!</p>
-                <p className="text-sm text-muted-foreground">{scannedStudent.name}</p>
-                <p className="text-xs text-muted-foreground">ID: {scannedStudent.id}</p>
+              <div className="absolute inset-0 flex items-center justify-center bg-success/10 backdrop-blur-sm z-10">
+                <div className="text-center">
+                  <Check className="w-16 h-16 text-success mx-auto mb-2" />
+                  <p className="text-success font-medium">Student Recognized!</p>
+                  <p className="text-sm text-muted-foreground">{scannedStudent.name}</p>
+                  <p className="text-xs text-muted-foreground">ID: {scannedStudent.id}</p>
+                </div>
               </div>
             ) : scanResult === "failed" ? (
-              <div className="text-center">
-                <X className="w-16 h-16 text-destructive mx-auto mb-2" />
-                <p className="text-destructive font-medium">Recognition Failed</p>
-                <p className="text-sm text-muted-foreground">Please try again or search manually</p>
+              <div className="absolute inset-0 flex items-center justify-center bg-destructive/10 backdrop-blur-sm z-10">
+                <div className="text-center">
+                  <X className="w-16 h-16 text-destructive mx-auto mb-2" />
+                  <p className="text-destructive font-medium">Recognition Failed</p>
+                  <p className="text-sm text-muted-foreground">Please try again or search manually</p>
+                </div>
               </div>
+            ) : null}
+
+            {isCameraActive ? (
+              <video
+                ref={videoRef}
+                autoPlay
+                playsInline
+                muted
+                className="w-full h-full object-cover bg-black"
+                style={{ transform: 'scaleX(-1)' }}
+              />
             ) : (
-              <div className="text-center">
-                <Camera className={cn(
-                  "w-16 h-16 mx-auto mb-2",
-                  isScanning ? "text-primary animate-pulse" : "text-muted-foreground"
-                )} />
-                <p className="text-muted-foreground">
-                  {isScanning ? "Scanning student face..." : "Ask student to position face in camera view"}
-                </p>
+              <div className="w-full h-full flex items-center justify-center bg-muted">
+                <div className="text-center">
+                  <Camera className="w-16 h-16 mx-auto mb-2 text-muted-foreground" />
+                  <p className="text-muted-foreground">
+                    Click below to start camera
+                  </p>
+                </div>
               </div>
+            )}
+
+            {isScanning && (
+              <div className="absolute inset-0 border-4 border-primary animate-pulse pointer-events-none" />
             )}
           </div>
           
