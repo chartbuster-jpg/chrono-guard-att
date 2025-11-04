@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Camera, Check, X } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -11,18 +11,58 @@ interface FaceRecognitionProps {
 const FaceRecognition = ({ onSuccess, onError }: FaceRecognitionProps) => {
   const [isScanning, setIsScanning] = useState(false);
   const [scanResult, setScanResult] = useState<"success" | "failed" | null>(null);
+  const [isCameraActive, setIsCameraActive] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
 
-  const handleStartScan = () => {
+  useEffect(() => {
+    return () => {
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop());
+      }
+    };
+  }, []);
+
+  const startCamera = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: { facingMode: "user" } 
+      });
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+      }
+      setIsCameraActive(true);
+    } catch (err) {
+      onError("Unable to access camera. Please check permissions.");
+      console.error("Camera error:", err);
+    }
+  };
+
+  const stopCamera = () => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current = null;
+    }
+    setIsCameraActive(false);
+  };
+
+  const handleStartScan = async () => {
+    if (!isCameraActive) {
+      await startCamera();
+    }
+    
     setIsScanning(true);
     setScanResult(null);
     
     // Simulate face recognition process
     setTimeout(() => {
-      const isSuccessful = Math.random() > 0.3; // 70% success rate for demo
+      const isSuccessful = Math.random() > 0.3;
       
       if (isSuccessful) {
         setScanResult("success");
         onSuccess("STUDENT001");
+        stopCamera();
       } else {
         setScanResult("failed");
         onError("Face not recognized. Please try again.");
@@ -30,7 +70,6 @@ const FaceRecognition = ({ onSuccess, onError }: FaceRecognitionProps) => {
       
       setIsScanning(false);
       
-      // Reset after 3 seconds
       setTimeout(() => {
         setScanResult(null);
       }, 3000);
@@ -43,33 +82,48 @@ const FaceRecognition = ({ onSuccess, onError }: FaceRecognitionProps) => {
       
       <div className="space-y-4">
         <div className={cn(
-          "w-full h-64 rounded-lg border-2 border-dashed flex items-center justify-center transition-all duration-300",
-          isScanning ? "border-primary bg-primary-light animate-pulse" : "border-border bg-muted",
-          scanResult === "success" ? "border-success bg-success-light" : "",
-          scanResult === "failed" ? "border-destructive bg-destructive-light" : ""
+          "w-full h-64 rounded-lg border-2 overflow-hidden relative transition-all duration-300",
+          isScanning ? "border-primary" : "border-border",
+          scanResult === "success" ? "border-success" : "",
+          scanResult === "failed" ? "border-destructive" : ""
         )}>
           {scanResult === "success" ? (
-            <div className="text-center">
-              <Check className="w-16 h-16 text-success mx-auto mb-2" />
-              <p className="text-success font-medium">Recognition Successful!</p>
-              <p className="text-sm text-muted-foreground">Student ID: STUDENT001</p>
+            <div className="absolute inset-0 flex items-center justify-center bg-success/10 backdrop-blur-sm">
+              <div className="text-center">
+                <Check className="w-16 h-16 text-success mx-auto mb-2" />
+                <p className="text-success font-medium">Recognition Successful!</p>
+                <p className="text-sm text-muted-foreground">Student ID: STUDENT001</p>
+              </div>
             </div>
           ) : scanResult === "failed" ? (
-            <div className="text-center">
-              <X className="w-16 h-16 text-destructive mx-auto mb-2" />
-              <p className="text-destructive font-medium">Recognition Failed</p>
-              <p className="text-sm text-muted-foreground">Please try again</p>
+            <div className="absolute inset-0 flex items-center justify-center bg-destructive/10 backdrop-blur-sm">
+              <div className="text-center">
+                <X className="w-16 h-16 text-destructive mx-auto mb-2" />
+                <p className="text-destructive font-medium">Recognition Failed</p>
+                <p className="text-sm text-muted-foreground">Please try again</p>
+              </div>
             </div>
+          ) : null}
+          
+          {isCameraActive ? (
+            <video
+              ref={videoRef}
+              autoPlay
+              playsInline
+              muted
+              className="w-full h-full object-cover"
+            />
           ) : (
-            <div className="text-center">
-              <Camera className={cn(
-                "w-16 h-16 mx-auto mb-2",
-                isScanning ? "text-primary animate-pulse" : "text-muted-foreground"
-              )} />
-              <p className="text-muted-foreground">
-                {isScanning ? "Scanning face..." : "Position your face in the camera view"}
-              </p>
+            <div className="w-full h-full flex items-center justify-center bg-muted">
+              <div className="text-center">
+                <Camera className="w-16 h-16 mx-auto mb-2 text-muted-foreground" />
+                <p className="text-muted-foreground">Click below to start camera</p>
+              </div>
             </div>
+          )}
+          
+          {isScanning && (
+            <div className="absolute inset-0 border-4 border-primary animate-pulse pointer-events-none" />
           )}
         </div>
         

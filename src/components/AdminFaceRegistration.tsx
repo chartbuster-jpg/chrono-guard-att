@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -15,6 +15,9 @@ const AdminFaceRegistration = ({ onSuccess, onError }: AdminFaceRegistrationProp
   const [recordResult, setRecordResult] = useState<"success" | "failed" | null>(null);
   const [selectedStudent, setSelectedStudent] = useState<{id: string, name: string, class: string} | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [isCameraActive, setIsCameraActive] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
 
   // Mock student database - in real app this would come from backend
   const students = [
@@ -30,10 +33,46 @@ const AdminFaceRegistration = ({ onSuccess, onError }: AdminFaceRegistrationProp
     student.id.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const handleStartRecording = () => {
+  useEffect(() => {
+    return () => {
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop());
+      }
+    };
+  }, []);
+
+  const startCamera = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: { facingMode: "user" } 
+      });
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+      }
+      setIsCameraActive(true);
+    } catch (err) {
+      onError("Unable to access camera. Please check permissions.");
+      console.error("Camera error:", err);
+    }
+  };
+
+  const stopCamera = () => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current = null;
+    }
+    setIsCameraActive(false);
+  };
+
+  const handleStartRecording = async () => {
     if (!selectedStudent) {
       onError("Please select a student first");
       return;
+    }
+
+    if (!isCameraActive) {
+      await startCamera();
     }
 
     setIsRecording(true);
@@ -41,11 +80,12 @@ const AdminFaceRegistration = ({ onSuccess, onError }: AdminFaceRegistrationProp
     
     // Simulate face recording process
     setTimeout(() => {
-      const isSuccessful = Math.random() > 0.1; // 90% success rate for demo
+      const isSuccessful = Math.random() > 0.1;
       
       if (isSuccessful) {
         setRecordResult("success");
         onSuccess(selectedStudent.id, selectedStudent.name);
+        stopCamera();
       } else {
         setRecordResult("failed");
         onError("Face recording failed. Please ensure good lighting and try again.");
@@ -53,7 +93,6 @@ const AdminFaceRegistration = ({ onSuccess, onError }: AdminFaceRegistrationProp
       
       setIsRecording(false);
       
-      // Reset after 3 seconds
       setTimeout(() => {
         setRecordResult(null);
       }, 3000);
@@ -123,38 +162,50 @@ const AdminFaceRegistration = ({ onSuccess, onError }: AdminFaceRegistrationProp
         
         <div className="space-y-4">
           <div className={cn(
-            "w-full h-64 rounded-lg border-2 border-dashed flex items-center justify-center transition-all duration-300",
-            isRecording ? "border-primary bg-primary-light animate-pulse" : "border-border bg-muted",
-            recordResult === "success" ? "border-success bg-success-light" : "",
-            recordResult === "failed" ? "border-destructive bg-destructive-light" : ""
+            "w-full h-64 rounded-lg border-2 overflow-hidden relative transition-all duration-300",
+            isRecording ? "border-primary" : "border-border",
+            recordResult === "success" ? "border-success" : "",
+            recordResult === "failed" ? "border-destructive" : ""
           )}>
             {recordResult === "success" ? (
-              <div className="text-center">
-                <Check className="w-16 h-16 text-success mx-auto mb-2" />
-                <p className="text-success font-medium">Face Recorded Successfully!</p>
-                <p className="text-sm text-muted-foreground">Student can now use face recognition</p>
+              <div className="absolute inset-0 flex items-center justify-center bg-success/10 backdrop-blur-sm z-10">
+                <div className="text-center">
+                  <Check className="w-16 h-16 text-success mx-auto mb-2" />
+                  <p className="text-success font-medium">Face Recorded Successfully!</p>
+                  <p className="text-sm text-muted-foreground">Student can now use face recognition</p>
+                </div>
               </div>
             ) : recordResult === "failed" ? (
-              <div className="text-center">
-                <X className="w-16 h-16 text-destructive mx-auto mb-2" />
-                <p className="text-destructive font-medium">Recording Failed</p>
-                <p className="text-sm text-muted-foreground">Please try again with better lighting</p>
+              <div className="absolute inset-0 flex items-center justify-center bg-destructive/10 backdrop-blur-sm z-10">
+                <div className="text-center">
+                  <X className="w-16 h-16 text-destructive mx-auto mb-2" />
+                  <p className="text-destructive font-medium">Recording Failed</p>
+                  <p className="text-sm text-muted-foreground">Please try again with better lighting</p>
+                </div>
               </div>
+            ) : null}
+            
+            {isCameraActive ? (
+              <video
+                ref={videoRef}
+                autoPlay
+                playsInline
+                muted
+                className="w-full h-full object-cover"
+              />
             ) : (
-              <div className="text-center">
-                <Camera className={cn(
-                  "w-16 h-16 mx-auto mb-2",
-                  isRecording ? "text-primary animate-pulse" : "text-muted-foreground"
-                )} />
-                <p className="text-muted-foreground">
-                  {isRecording 
-                    ? "Recording face data... Please hold still" 
-                    : selectedStudent 
-                      ? "Ask student to position face in camera view" 
-                      : "Select a student first"
-                  }
-                </p>
+              <div className="w-full h-full flex items-center justify-center bg-muted">
+                <div className="text-center">
+                  <Camera className="w-16 h-16 mx-auto mb-2 text-muted-foreground" />
+                  <p className="text-muted-foreground">
+                    {selectedStudent ? "Click below to start camera" : "Select a student first"}
+                  </p>
+                </div>
               </div>
+            )}
+            
+            {isRecording && (
+              <div className="absolute inset-0 border-4 border-primary animate-pulse pointer-events-none" />
             )}
           </div>
           
