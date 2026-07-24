@@ -258,18 +258,20 @@ const Dashboard = ({ userRole, onLogout }: DashboardProps) => {
         );
       case "hostel":
         return <HostelManagement />;
-      case "settings":
+      case "schedule":
+        return <ScheduleManagement />;
+      case "qr-badges":
         return (
           <div className="space-y-8">
             <div>
-              <h1 className="text-3xl font-bold text-foreground mb-2">System Settings</h1>
-              <p className="text-muted-foreground">Configure attendance system parameters and notifications.</p>
+              <h1 className="text-3xl font-bold text-foreground mb-2">Student QR Badges</h1>
+              <p className="text-muted-foreground">Print QR cards for students. Teachers scan these to mark attendance.</p>
             </div>
-            <div className="bg-gradient-card rounded-xl border border-border p-6 shadow-custom-md">
-              <p className="text-center text-muted-foreground">System settings interface will be implemented here.</p>
-            </div>
+            <StudentQRBadges />
           </div>
         );
+      case "settings":
+        return <SettingsManagement />;
       default:
         return null;
     }
