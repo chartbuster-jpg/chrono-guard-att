@@ -29,9 +29,9 @@ const QRScanner = ({ onSuccess, onError }: QRScannerProps) => {
 
   useEffect(() => {
     return () => {
-      scannerRef.current?.stop().catch(() => {}).finally(() => {
-        scannerRef.current?.clear().catch(() => {});
-      });
+      const inst = scannerRef.current;
+      if (!inst) return;
+      inst.stop().then(() => inst.clear()).catch(() => {});
     };
   }, []);
 
