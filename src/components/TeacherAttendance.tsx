@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { getAllStudents, markAttendance, type Profile } from "@/lib/supabase";
 import { loadFaceModels, detectDescriptor, findBestMatch } from "@/lib/faceApi";
+import { listSchedules, isClassInSession } from "@/lib/schedules";
 
 interface TeacherAttendanceProps {
   onSuccess: (studentId: string, studentName: string) => void;
@@ -110,6 +111,15 @@ const TeacherAttendance = ({ onSuccess, onError }: TeacherAttendanceProps) => {
         } else {
           const student = students.find((s) => s.id === match.id);
           const name = student?.full_name || "Unknown student";
+          if (student?.class_section) {
+            const schedules = await listSchedules();
+            if (!isClassInSession(schedules, student.class_section)) {
+              setScanResult("failed");
+              onError(`Recognized ${name}, but no active class scheduled for ${student.class_section} right now.`);
+              setIsScanning(false);
+              return;
+            }
+          }
           const { error: attErr } = await markAttendance(match.id, "present", "face");
           if (attErr) {
             setScanResult("failed");
@@ -136,6 +146,12 @@ const TeacherAttendance = ({ onSuccess, onError }: TeacherAttendanceProps) => {
   };
 
   const handleManualAttendance = async (student: Profile) => {
+    if (student.class_section) {
+      const schedules = await listSchedules();
+      if (!isClassInSession(schedules, student.class_section)) {
+        return onError(`No active class scheduled for ${student.class_section} right now.`);
+      }
+    }
     const { error } = await markAttendance(student.id, "present", "manual");
     if (error) return onError(`Failed to mark attendance: ${error.message}`);
     onSuccess(student.id, student.full_name);

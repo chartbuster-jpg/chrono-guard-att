@@ -14,6 +14,39 @@ export type Database = {
   }
   public: {
     Tables: {
+      app_settings: {
+        Row: {
+          geofence_radius_m: number
+          id: string
+          qr_expiry_seconds: number
+          school_lat: number | null
+          school_lng: number | null
+          school_name: string
+          singleton: boolean
+          updated_at: string
+        }
+        Insert: {
+          geofence_radius_m?: number
+          id?: string
+          qr_expiry_seconds?: number
+          school_lat?: number | null
+          school_lng?: number | null
+          school_name?: string
+          singleton?: boolean
+          updated_at?: string
+        }
+        Update: {
+          geofence_radius_m?: number
+          id?: string
+          qr_expiry_seconds?: number
+          school_lat?: number | null
+          school_lng?: number | null
+          school_name?: string
+          singleton?: boolean
+          updated_at?: string
+        }
+        Relationships: []
+      }
       attendance_records: {
         Row: {
           check_in_time: string | null
