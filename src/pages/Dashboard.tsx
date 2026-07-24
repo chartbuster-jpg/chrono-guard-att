@@ -9,6 +9,9 @@ import AdminFaceRegistration from "@/components/AdminFaceRegistration";
 import StudentList from "@/components/StudentList";
 import ParentManagement from "@/components/ParentManagement";
 import HostelManagement from "@/components/HostelManagement";
+import ScheduleManagement from "@/components/ScheduleManagement";
+import SettingsManagement from "@/components/SettingsManagement";
+import StudentQRBadges from "@/components/StudentQRBadges";
 import { 
   Users, 
   Calendar, 
