@@ -1,133 +1,222 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { Html5Qrcode } from "html5-qrcode";
 import { Button } from "@/components/ui/button";
-import { QrCode, MapPin, Check, X, AlertTriangle } from "lucide-react";
+import { MapPin, Check, X, AlertTriangle, QrCode, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { getSettings, distanceMeters, getCurrentPosition } from "@/lib/settings";
+import { listSchedules, isClassInSession } from "@/lib/schedules";
+import { getAllStudents, markAttendance, type Profile } from "@/lib/supabase";
 
 interface QRScannerProps {
-  onSuccess: (studentId: string) => void;
+  onSuccess: (studentId: string, studentName: string) => void;
   onError: (error: string) => void;
 }
 
+/**
+ * QR Attendance:
+ * - Reads a QR that contains a student_id (or a JSON payload with student_id).
+ * - Requires the scanning device (teacher's) to be within the configured geofence.
+ * - Requires an active schedule for that student's class right now.
+ */
 const QRScanner = ({ onSuccess, onError }: QRScannerProps) => {
-  const [isScanning, setIsScanning] = useState(false);
-  const [scanResult, setScanResult] = useState<"success" | "failed" | "location_error" | null>(null);
-  const [location, setLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [scanning, setScanning] = useState(false);
+  const [result, setResult] = useState<"success" | "failed" | "location_error" | "schedule_error" | null>(null);
+  const [statusMsg, setStatusMsg] = useState<string>("");
+  const [distance, setDistance] = useState<number | null>(null);
+  const scannerRef = useRef<Html5Qrcode | null>(null);
+  const containerId = "qr-reader-container";
+  const busyRef = useRef(false);
 
-  const checkGeofencing = () => {
-    // Simulate getting user location
-    return new Promise<boolean>((resolve) => {
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          const userLat = position.coords.latitude;
-          const userLng = position.coords.longitude;
-          setLocation({ lat: userLat, lng: userLng });
-          
-          // Simulate school location check (within 100m radius)
-          const schoolLat = 40.7128; // Example coordinates
-          const schoolLng = -74.0060;
-          
-          const distance = Math.sqrt(
-            Math.pow(userLat - schoolLat, 2) + Math.pow(userLng - schoolLng, 2)
-          ) * 111000; // Convert to meters (approximate)
-          
-          resolve(distance < 100); // Within 100 meters
-        },
-        () => {
-          resolve(false);
-        }
-      );
-    });
+  useEffect(() => {
+    return () => {
+      scannerRef.current?.stop().catch(() => {}).finally(() => {
+        scannerRef.current?.clear().catch(() => {});
+      });
+    };
+  }, []);
+
+  const extractStudentId = (text: string): string | null => {
+    try {
+      const obj = JSON.parse(text);
+      if (obj && typeof obj.student_id === "string") return obj.student_id;
+    } catch {
+      // not JSON - treat as raw
+    }
+    return text.trim() || null;
   };
 
-  const handleStartScan = async () => {
-    setIsScanning(true);
-    setScanResult(null);
-    
-    // Check geofencing first
-    const isWithinGeofence = await checkGeofencing();
-    
-    if (!isWithinGeofence) {
-      setScanResult("location_error");
-      onError("You are not within the school premises.");
-      setIsScanning(false);
-      setTimeout(() => setScanResult(null), 3000);
+  const stop = async () => {
+    if (scannerRef.current) {
+      try { await scannerRef.current.stop(); } catch {}
+      try { await scannerRef.current.clear(); } catch {}
+      scannerRef.current = null;
+    }
+    setScanning(false);
+  };
+
+  const start = async () => {
+    setResult(null);
+    setStatusMsg("Checking location…");
+    setScanning(true);
+
+    // 1. Geofence check
+    const settings = await getSettings();
+    if (!settings || settings.school_lat == null || settings.school_lng == null) {
+      setScanning(false);
+      setResult("location_error");
+      onError("School location not configured. Ask admin to set it in Settings.");
       return;
     }
-    
-    // Simulate QR code scanning
-    setTimeout(() => {
-      const isSuccessful = Math.random() > 0.2; // 80% success rate for demo
-      
-      if (isSuccessful) {
-        setScanResult("success");
-        onSuccess("STUDENT001");
-      } else {
-        setScanResult("failed");
-        onError("Invalid QR code. Please try again.");
+    try {
+      const pos = await getCurrentPosition();
+      const d = distanceMeters(pos.coords.latitude, pos.coords.longitude, settings.school_lat, settings.school_lng);
+      setDistance(d);
+      if (d > settings.geofence_radius_m) {
+        setScanning(false);
+        setResult("location_error");
+        onError(`Outside school premises (${Math.round(d)}m away, allowed ${settings.geofence_radius_m}m).`);
+        return;
       }
-      
-      setIsScanning(false);
-      setTimeout(() => setScanResult(null), 3000);
-    }, 2000);
+    } catch (e) {
+      setScanning(false);
+      setResult("location_error");
+      onError(`Location error: ${(e as Error).message}`);
+      return;
+    }
+
+    // 2. Start camera
+    setStatusMsg("Point the camera at the student's QR code…");
+    try {
+      scannerRef.current = new Html5Qrcode(containerId);
+      await scannerRef.current.start(
+        { facingMode: "environment" },
+        { fps: 10, qrbox: { width: 240, height: 240 } },
+        async (decoded) => {
+          if (busyRef.current) return;
+          busyRef.current = true;
+          await handleDecoded(decoded);
+          setTimeout(() => { busyRef.current = false; }, 2000);
+        },
+        () => { /* per-frame decode errors are noisy — ignore */ },
+      );
+    } catch (e) {
+      setScanning(false);
+      onError(`Camera error: ${(e as Error).message}`);
+    }
+  };
+
+  const handleDecoded = async (decoded: string) => {
+    const studentId = extractStudentId(decoded);
+    if (!studentId) {
+      setResult("failed");
+      onError("Unreadable QR code.");
+      return;
+    }
+
+    // 3. Look up student, verify schedule
+    const students = await getAllStudents();
+    const student = students.find((s: Profile) => s.id === studentId || s.student_id === studentId);
+    if (!student) {
+      setResult("failed");
+      onError(`No student found for QR: ${studentId}`);
+      return;
+    }
+    if (!student.class_section) {
+      setResult("failed");
+      onError(`${student.full_name} has no class assigned.`);
+      return;
+    }
+    const schedules = await listSchedules();
+    const active = isClassInSession(schedules, student.class_section);
+    if (!active) {
+      setResult("schedule_error");
+      onError(`No active class right now for ${student.class_section}.`);
+      return;
+    }
+
+    // 4. Mark attendance
+    const { error } = await markAttendance(student.id, "present", "qr");
+    if (error) {
+      setResult("failed");
+      onError(`Failed to mark: ${error.message}`);
+      return;
+    }
+    setResult("success");
+    setStatusMsg(`${student.full_name} marked present`);
+    onSuccess(student.id, student.full_name);
+    await stop();
   };
 
   return (
     <div className="bg-gradient-card rounded-xl border border-border p-6 shadow-custom-md">
       <h3 className="text-lg font-semibold text-foreground mb-4">QR Code Attendance</h3>
-      
+
       <div className="space-y-4">
         <div className="flex items-center space-x-2 text-sm text-muted-foreground">
           <MapPin className="w-4 h-4" />
-          <span>Geofencing: {location ? "Location verified" : "Checking location..."}</span>
+          <span>
+            Geofencing: {distance == null ? "not checked" : `${Math.round(distance)}m from school`}
+          </span>
         </div>
-        
-        <div className={cn(
-          "w-full h-64 rounded-lg border-2 border-dashed flex items-center justify-center transition-all duration-300",
-          isScanning ? "border-primary bg-primary-light animate-pulse" : "border-border bg-muted",
-          scanResult === "success" ? "border-success bg-success-light" : "",
-          scanResult === "failed" ? "border-destructive bg-destructive-light" : "",
-          scanResult === "location_error" ? "border-warning bg-warning-light" : ""
-        )}>
-          {scanResult === "success" ? (
-            <div className="text-center">
-              <Check className="w-16 h-16 text-success mx-auto mb-2" />
-              <p className="text-success font-medium">QR Code Scanned!</p>
-              <p className="text-sm text-muted-foreground">Student ID: STUDENT001</p>
+
+        <div
+          className={cn(
+            "w-full min-h-64 rounded-lg border-2 border-dashed flex items-center justify-center transition-all duration-300 overflow-hidden relative bg-black",
+            scanning ? "border-primary" : "border-border",
+            result === "success" ? "border-success" : "",
+            result === "failed" ? "border-destructive" : "",
+            result === "location_error" || result === "schedule_error" ? "border-warning" : "",
+          )}
+        >
+          <div id={containerId} className="w-full" />
+
+          {!scanning && result === null && (
+            <div className="absolute inset-0 flex items-center justify-center bg-muted">
+              <div className="text-center">
+                <QrCode className="w-16 h-16 mx-auto mb-2 text-muted-foreground" />
+                <p className="text-muted-foreground">Tap start to scan</p>
+              </div>
             </div>
-          ) : scanResult === "failed" ? (
-            <div className="text-center">
-              <X className="w-16 h-16 text-destructive mx-auto mb-2" />
-              <p className="text-destructive font-medium">Invalid QR Code</p>
-              <p className="text-sm text-muted-foreground">Please scan a valid code</p>
+          )}
+          {result === "success" && (
+            <div className="absolute inset-0 flex items-center justify-center bg-success/10 backdrop-blur-sm">
+              <div className="text-center">
+                <Check className="w-16 h-16 text-success mx-auto mb-2" />
+                <p className="text-success font-medium">{statusMsg}</p>
+              </div>
             </div>
-          ) : scanResult === "location_error" ? (
-            <div className="text-center">
-              <AlertTriangle className="w-16 h-16 text-warning mx-auto mb-2" />
-              <p className="text-warning font-medium">Location Check Failed</p>
-              <p className="text-sm text-muted-foreground">Not within school premises</p>
+          )}
+          {result === "failed" && (
+            <div className="absolute inset-0 flex items-center justify-center bg-destructive/10 backdrop-blur-sm">
+              <div className="text-center">
+                <X className="w-16 h-16 text-destructive mx-auto mb-2" />
+                <p className="text-destructive font-medium">Scan Failed</p>
+              </div>
             </div>
-          ) : (
-            <div className="text-center">
-              <QrCode className={cn(
-                "w-16 h-16 mx-auto mb-2",
-                isScanning ? "text-primary animate-pulse" : "text-muted-foreground"
-              )} />
-              <p className="text-muted-foreground">
-                {isScanning ? "Scanning QR code..." : "Position QR code in camera view"}
-              </p>
+          )}
+          {(result === "location_error" || result === "schedule_error") && (
+            <div className="absolute inset-0 flex items-center justify-center bg-warning/10 backdrop-blur-sm">
+              <div className="text-center">
+                <AlertTriangle className="w-16 h-16 text-warning mx-auto mb-2" />
+                <p className="text-warning font-medium">
+                  {result === "location_error" ? "Outside geofence" : "No active class"}
+                </p>
+              </div>
             </div>
           )}
         </div>
-        
-        <Button 
-          onClick={handleStartScan}
-          disabled={isScanning}
-          className="w-full"
-          variant="outline"
-          size="lg"
-        >
-          {isScanning ? "Scanning..." : "Scan QR Code"}
-        </Button>
+
+        {scanning && <p className="text-sm text-center text-muted-foreground">{statusMsg}</p>}
+
+        {scanning ? (
+          <Button onClick={stop} className="w-full" variant="outline" size="lg">
+            <Loader2 className="w-4 h-4 mr-2 animate-spin" /> Stop Scanning
+          </Button>
+        ) : (
+          <Button onClick={start} className="w-full" variant="hero" size="lg">
+            Start QR Scan
+          </Button>
+        )}
       </div>
     </div>
   );
