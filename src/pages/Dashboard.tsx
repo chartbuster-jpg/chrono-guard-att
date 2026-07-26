@@ -12,6 +12,7 @@ import HostelManagement from "@/components/HostelManagement";
 import ScheduleManagement from "@/components/ScheduleManagement";
 import SettingsManagement from "@/components/SettingsManagement";
 import StudentQRBadges from "@/components/StudentQRBadges";
+import VideoTutorials from "@/components/VideoTutorials";
 import { 
   Users, 
   Calendar, 
@@ -203,34 +204,7 @@ const Dashboard = ({ userRole, onLogout }: DashboardProps) => {
     </div>
   );
 
-  const renderTutorials = () => (
-    <div className="space-y-8">
-      <div>
-        <h1 className="text-3xl font-bold text-foreground mb-2">Video Tutorials</h1>
-        <p className="text-muted-foreground">Learn how to use the attendance system effectively.</p>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {[
-          { title: "Getting Started", duration: "5:30", thumbnail: "face-recognition" },
-          { title: "Face Recognition Setup", duration: "3:45", thumbnail: "qr-code" },
-          { title: "QR Code Attendance", duration: "2:20", thumbnail: "statistics" },
-          { title: "Understanding Statistics", duration: "4:15", thumbnail: "admin" },
-        ].map((video, index) => (
-          <div key={index} className="bg-gradient-card rounded-xl border border-border p-6 shadow-custom-md">
-            <div className="aspect-video bg-muted rounded-lg flex items-center justify-center mb-4">
-              <PlayCircle className="w-12 h-12 text-muted-foreground" />
-            </div>
-            <h3 className="font-semibold text-foreground mb-2">{video.title}</h3>
-            <p className="text-sm text-muted-foreground mb-4">Duration: {video.duration}</p>
-            <Button variant="outline" className="w-full">
-              Watch Tutorial
-            </Button>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
+  const renderTutorials = () => <VideoTutorials />;
 
   const renderAdminFeatures = () => {
     if (userRole !== "admin") return null;
